@@ -85,10 +85,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const apiKey = process.env.GEMINI_API_KEY;
+    const apiKey =
+      process.env.GEMINI_API_KEY ||
+      process.env.gemini_api_key ||
+      process.env.NEXT_PUBLIC_GEMINI_API_KEY;
     if (!apiKey) {
       return NextResponse.json(
-        { error: "API key not configured" },
+        { error: "GEMINI_API_KEY environment variable is not set" },
         { status: 500 }
       );
     }
@@ -101,10 +104,13 @@ export async function POST(req: NextRequest) {
     );
 
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
       {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "x-goog-api-key": apiKey,
+        },
         body: JSON.stringify({
           contents: geminiMessages,
           systemInstruction: {
@@ -113,6 +119,9 @@ export async function POST(req: NextRequest) {
           generationConfig: {
             temperature: 0.7,
             maxOutputTokens: 1024,
+            thinkingConfig: {
+              thinkingBudget: 0,
+            },
           },
         }),
       }
@@ -120,17 +129,26 @@ export async function POST(req: NextRequest) {
 
     if (!response.ok) {
       const errorData = await response.text();
-      console.error("Gemini API error:", errorData);
+      console.error("Gemini API error:", response.status, errorData);
       return NextResponse.json(
-        { error: "Failed to get response from AI" },
+        { error: `Gemini API error: ${response.status}` },
         { status: 500 }
       );
     }
 
     const data = await response.json();
-    const reply =
-      data.candidates?.[0]?.content?.parts?.[0]?.text ||
-      "Sorry, I couldn't generate a response.";
+
+    // Extract the non-thinking text part from the response
+    const parts = data.candidates?.[0]?.content?.parts;
+    let reply = "Sorry, I couldn't generate a response.";
+    if (parts && Array.isArray(parts)) {
+      const textPart = parts.find(
+        (p: { thought?: boolean; text?: string }) => !p.thought && p.text
+      );
+      if (textPart) {
+        reply = textPart.text;
+      }
+    }
 
     return NextResponse.json({ reply });
   } catch (error) {

@@ -55,12 +55,12 @@ export default function AiChat() {
 
       const data = await res.json();
 
-      if (data.error) {
+      if (!res.ok || data.error) {
         setMessages([
           ...newMessages,
           {
             role: "assistant",
-            content: "Sorry, something went wrong. Please try again.",
+            content: `Sorry, something went wrong: ${data.error || res.statusText}. Please try again.`,
           },
         ]);
       } else {
